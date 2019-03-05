@@ -1,6 +1,7 @@
 import csv,pprint
 from .layers import Base
 import re
+import ast
 
 def get_human_readable(num):
     units=['','K','M','G','T','P']
@@ -35,6 +36,9 @@ def save_csv(layers,csv_save_path='/tmp/analyse.csv',
                 num=int(item)
                 sum[idx]+=num
             except:pass
+            if('[' in s and ']' in s):
+                if s.count('[') ==1:
+                    s=ast.literal_eval(s)
             if(type(s)==list):
                 print_line.extend(s)
             else:
@@ -53,10 +57,11 @@ def save_csv(layers,csv_save_path='/tmp/analyse.csv',
                 else:
                     print_list.append('%s:%.3e'%(save_items[idx],item))
         print(print_list)
+    new_file_header = ('name', 'kernel', 'stride','padding','output channels', 'input # per Batch','input channels','input height', 'input width','output # per batch','output channels','output height','output width', 'dot', 'add', 'compare','ops', 'weight_size','activation_size')
     if csv_save_path!=None:
         with open(csv_save_path,'w') as file:
             writer=csv.writer(file)
-            writer.writerow(save_items)
+            writer.writerow(new_file_header)
             for layer in print_list:
                 writer.writerow(layer)
         print('saved at {}!'.format(csv_save_path))
