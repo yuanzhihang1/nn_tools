@@ -1,5 +1,6 @@
 import csv,pprint
 from .layers import Base
+import re
 
 def get_human_readable(num):
     units=['','K','M','G','T','P']
@@ -27,11 +28,17 @@ def save_csv(layers,csv_save_path='/tmp/analyse.csv',
                     s+=' '+str(i)
             else:
                 s=str(item)
+                if "=" in s:
+                    s=s.split(",")
+                    s=[x[x.find("=")+1:] for x in s]
             try:
                 num=int(item)
                 sum[idx]+=num
             except:pass
-            print_line.append(s)
+            if(type(s)==list):
+                print_line.extend(s)
+            else:
+                print_line.append(s)
         print_list.append(print_line)
     if print_detail:
         sum[0] = 'SUM'

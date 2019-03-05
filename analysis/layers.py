@@ -152,6 +152,7 @@ class Sliding(Base):
         for i in range(self.input.dim-2):
             if not transpose:
                 if not ceil:
+                    print(self)
                     outs.append(np.floor(float(self.input[2+i] + self.pad[i] * 2 - self.kernel_size[i]) / self.stride[i]) + 1)
                 else:
                     outs.append(np.ceil(float(self.input[2+i] + self.pad[i] * 2 - self.kernel_size[i]) / self.stride[i]) + 1)
