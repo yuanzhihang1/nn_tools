@@ -700,6 +700,22 @@ def _contiguous(input,*args):
     log.reuse_blob(input,x)
     return x
 
+#2019-8-13 add by hua
+def _expand_as(input, *args):
+	x = raw_tensor_magic_op['expand_as'](input, *args)
+	if not NET_INITTED:
+		return x
+	layer_name = log.add_layer(name = 'expandas')
+	top_blobs = log.add_blobs([x], name = 'expandas_blob')
+	layer = caffe_net.Layer_param(name = layer_name, type = 'Tile',
+		                         bottom = [log.get_blobs(input)], top = top_blobs)
+
+	layer.param.tile_param.axis = 2
+	layer.param.tile_param.tiles = x.size(2)
+	log.cnet.add_layer(layer)
+
+	return x
+
 def _add(input,*args):
     return ___add__(input, *args)
 
@@ -880,6 +896,8 @@ tensor_magic_op_supported=[
     '__imul__',
     '__div__',
     '__pow__',
+    #2019-8-13 add by hua
+    'expand_as',
 ]
 
 raw_tensor_magic_op={}
