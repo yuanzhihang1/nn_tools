@@ -8,6 +8,7 @@ from Caffe import layer_param
 from torch.nn.modules.utils import _pair
 import numpy as np
 import inspect
+import pdb
 
 """
 How to support a new layer type:
@@ -89,6 +90,8 @@ class TransLog(object):
             print("===\nWARNING: CANNOT FOUND blob at layer {}, this may cause a NoneType Error. "
                   "This may caused by the previous operation which produce the blob(tensor) is not implemented in nn_tools. "
                   "You can issue this at https://github.com/hahnyuan/nn_tools/issues. \n===".format(self.pytorch_layer_name))
+            #hua
+            #pdb.set_trace()
             return None
 
     def reuse_blob(self,old_tensor,new_tensor):
@@ -159,9 +162,12 @@ def _conv_transpose2d(raw,input, weight, bias=None, stride=1, padding=0, output_
     log.cnet.add_layer(layer)
     return x
 
+'''
+# use Deconvolution
 def _interpolate(raw,input, size=None, scale_factor=None, mode='nearest', align_corners=None):
-    raise NotImplementedError("The interpolate upsampling in pytorch cannot be implimented in caffe by This function, I'll try later. ")
-
+    #raise NotImplementedError("The interpolate upsampling in pytorch cannot be implimented in caffe by This function, I'll try later. ")
+    #hua
+    #pdb.set_trace()
     if mode=='bilinear':
         x=raw(input, size, scale_factor, mode, align_corners)
     else:
@@ -172,6 +178,7 @@ def _interpolate(raw,input, size=None, scale_factor=None, mode='nearest', align_
                                 bottom=[log.get_blobs(input)], top=[log.get_blobs(x)])
 
     def bilinear_weight(shape):
+        #pdb.set_trace()
         weight = np.zeros(np.prod(shape), dtype='float32')
         f = np.ceil(shape[3] / 2.)
         c = (2 * f - 1 - f % 2) / (2. * f)
@@ -180,13 +187,41 @@ def _interpolate(raw,input, size=None, scale_factor=None, mode='nearest', align_
             y = (i / shape[3]) % shape[2]
             weight[i] = (1 - abs(x / f - c)) * (1 - abs(y / f - c))
         return weight.reshape(shape)
-    kernel_size=2*scale_factor-scale_factor%2
+    #hua
+    #pdb.set_trace()
+    scale_factor = int(x.shape[2]/input.shape[2])
+    #kernel_size=2*scale_factor-scale_factor%2
+
     stride=scale_factor
     pad=int(np.ceil((scale_factor-1)/2))
     channels=x.size(1)
+    #hua 2019-7-22
+    kernel_size = x.shape[2]+stride-2*pad*(input.shape[2]-1)
     weight=bilinear_weight([channels,1,kernel_size,kernel_size])
     layer.conv_param(channels,kernel_size,stride=stride,pad=pad,bias_term=False,groups=channels)
     layer.add_data(weight)
+    log.cnet.add_layer(layer)
+    return x
+'''
+
+# use Interp
+def _interpolate(raw,input, size=None, scale_factor=None, mode='nearest', align_corners=None):
+    """
+    Interp.cpp only support bilinear now.
+    """
+    if mode=='bilinear':
+        x=raw(input, size, scale_factor, mode, align_corners)
+    else:
+        raise NotImplementedError("The interpolate upsampling only support bilinear in Caffe")
+  
+    name=log.add_layer(name='interpolate')
+    log.add_blobs([x],name='interpolate_blob')
+    layer=caffe_net.Layer_param(name=name, type='Interp',
+                                bottom=[log.get_blobs(input)], top=[log.get_blobs(x)])
+    output_height = x.shape[2]
+    output_width = x.shape[3]
+    layer.param.interp_param.height = output_height
+    layer.param.interp_param.width = output_width
     log.cnet.add_layer(layer)
     return x
 
@@ -333,6 +368,19 @@ def _tanh(raw, input):
     log.cnet.add_layer(layer)
     return x
 
+#hua 2019-7-22
+#add sigmoid
+def _sigmoid(raw,input):
+    # for sigmoid activation
+    #pdb.set_trace()
+    x = raw(input)
+    name = log.add_layer(name='sigmoid')
+    log.add_blobs([x],name='sigmoid_blob')
+    layer = caffe_net.Layer_param(name=name,type='Sigmoid',
+                                  bottom=[log.get_blobs(input)],top=[log.get_blobs(x)])
+    log.cnet.add_layer(layer)
+    return x
+
 def _softmax(raw, input, dim=None, _stacklevel=3):
     # for F.softmax
     x=raw(input, dim=dim)
@@ -442,6 +490,7 @@ def op_placeholder(raw, *args, **kwargs):
 F_supported=[
     'conv2d',
     'linear',
+    'sigmoid',
     'relu',
     'leaky_relu',
     'max_pool2d',
@@ -454,6 +503,8 @@ F_supported=[
     'softmax',
     'conv_transpose2d',
     #'interpolate',  # TODO, interpolate function cannot transfer correctly now
+    # hua 2019-7-22
+    'interpolate',
 
 ]
 
@@ -649,6 +700,22 @@ def _contiguous(input,*args):
     log.reuse_blob(input,x)
     return x
 
+#2019-8-13 add by hua
+def _expand_as(input, *args):
+	x = raw_tensor_magic_op['expand_as'](input, *args)
+	if not NET_INITTED:
+		return x
+	layer_name = log.add_layer(name = 'expandas')
+	top_blobs = log.add_blobs([x], name = 'expandas_blob')
+	layer = caffe_net.Layer_param(name = layer_name, type = 'Tile',
+		                         bottom = [log.get_blobs(input)], top = top_blobs)
+
+	layer.param.tile_param.axis = 2
+	layer.param.tile_param.tiles = x.size(2)
+	log.cnet.add_layer(layer)
+
+	return x
+
 def _add(input,*args):
     return ___add__(input, *args)
 
@@ -682,7 +749,10 @@ def ___add__(input, *args):
         return x
     layer_name = log.add_layer(name='add')
     top_blobs = log.add_blobs([x], name='add_blob')
+    #pdb.set_trace()
+    #bottom_blobs = [log.get_blobs(input)]
     if not isinstance(args[0],torch.Tensor):
+        #pdb.set_trace()
         layer = caffe_net.Layer_param(name=layer_name, type='Power',
                                       bottom=[log.get_blobs(input)], top=top_blobs)
         layer.param.power_param.shift = args[0]
@@ -826,6 +896,8 @@ tensor_magic_op_supported=[
     '__imul__',
     '__div__',
     '__pow__',
+    #2019-8-13 add by hua
+    'expand_as',
 ]
 
 raw_tensor_magic_op={}
@@ -845,7 +917,8 @@ for op_name in tensor_op_supported:
     op_wrapper = Rp(raw_op, globals()['_' + op_name])
     setattr(tensor_target, op_name, op_wrapper)
 
-
+#hua 2019-7-22
+#F.Sigmoid = Rp(F.sigmoid,_sigmoid)
 
 def trans_net(net,input_var,name='TransferedPytorchModel'):
     print('Starting Transform, This will take a while')
