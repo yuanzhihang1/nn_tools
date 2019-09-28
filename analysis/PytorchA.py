@@ -14,12 +14,12 @@ layer_name_dict={}
 
 def _analyse(module,raw_input):
     input=[]
-    for i in raw_input:
+    for i in raw_input: #raw_input通常是一个元组
         if isinstance(i,torch.Tensor):
             s = i.size()
             input.append(Blob(s))
     out=None
-    name=layer_name_dict[module]
+    name=layer_name_dict[module] #layer_name_dict 在前面就已经填充好
     if isinstance(module,nn.Conv2d):
         out=Conv(input[0],module.kernel_size,module.out_channels,
                  module.stride,module.padding,group_size=module.groups,name=name)
@@ -66,19 +66,19 @@ def analyse(net, inputs):
     :param inputs: torch.Variable, torch.Tensor or list of them
     :return: blob_dict, tracked_layers
     """
-    del tracked_layers[:]
+    del tracked_layers[:]# 清空列表
     del blob_dict[:]
-    if not isinstance(inputs,(list,tuple)):
+    if not isinstance(inputs,(list,tuple)):# 将输入的Tensor放到一个list中
         raw_inputs=[inputs]
     else:
         raw_inputs=inputs
     _inputs=[]
-    for name,layer in net.named_modules():
-        layer_name_dict[layer]=name
-    for i in raw_inputs:
+    for name,layer in net.named_modules():# 从整体到局部遍历整个模型中模块和层
+        layer_name_dict[layer]=name# key居然是具体的模块和层，而不是对应的名字
+    for i in raw_inputs: #遍历输入
         if isinstance(i,Variable):
             _inputs.append(i)
-        elif isinstance(i,torch.Tensor):
+        elif isinstance(i,torch.Tensor):# 输入一般为一个Tensor
             _inputs.append(Variable(i))
         elif isinstance(i,np.ndarray):
             _inputs.append(Variable(torch.Tensor(i)))
